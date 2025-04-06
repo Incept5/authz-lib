@@ -159,7 +159,7 @@ publishing {
                 withXml {
                     val dependencies = asNode().appendNode("dependencies")
 
-                    project(":error-core").let { subproject ->
+                    project(":authz-core").let { subproject ->
                         val dependency = dependencies.appendNode("dependency")
                         dependency.appendNode("groupId", "com.github.incept5.authz-lib")
                         dependency.appendNode("artifactId", "authz-core")
@@ -171,6 +171,14 @@ publishing {
                         val dependency = dependencies.appendNode("dependency")
                         dependency.appendNode("groupId", "com.github.incept5.authz-lib")
                         dependency.appendNode("artifactId", "authz-quarkus")
+                        dependency.appendNode("version", project.version)
+                        dependency.appendNode("scope", "compile")
+                    }
+
+                    project(":authz-testing").let { subproject ->
+                        val dependency = dependencies.appendNode("dependency")
+                        dependency.appendNode("groupId", "com.github.incept5.authz-lib")
+                        dependency.appendNode("artifactId", "authz-testing")
                         dependency.appendNode("version", project.version)
                         dependency.appendNode("scope", "compile")
                     }

@@ -39,7 +39,6 @@ logs/
 .DS_Store
 Thumbs.db
 
-.hldk/
 
-/error-quarkus/bin/
+/authz-quarkus/bin/
 /.eve/
