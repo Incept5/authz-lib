@@ -1,0 +1,5 @@
+jdk:
+  - openjdk21
+install:
+  - echo "Building authz-lib with Gradle"
+  - ./gradlew clean build publishToMavenLocal -Pgroup=com.github.incept5

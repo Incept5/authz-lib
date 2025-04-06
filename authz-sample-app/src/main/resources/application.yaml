@@ -1,0 +1,26 @@
+quarkus:
+  log:
+    # Note: Allow trace logging to be switched on at runtime but don't enable it by default
+    level: DEBUG
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,S} %X{correlationId} %-5p - [%c{3.}] (%t) %s%e%n"
+
+    category:
+      "org.incept5":
+        level: TRACE
+
+incept5:
+  authz:
+
+    filter:
+      ignore-paths:
+        - /public/.*
+
+    roles:
+      - name: backoffice.admin
+        permissions:
+          - example:read
+
+      - name: org.user
+        permissions:
+          - example:read
