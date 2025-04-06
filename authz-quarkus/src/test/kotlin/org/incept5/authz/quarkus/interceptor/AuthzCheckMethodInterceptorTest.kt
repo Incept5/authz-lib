@@ -1,10 +1,8 @@
 package org.incept5.authz.quarkus.interceptor
 
-import org.incept5.authz.core.access.AccessControl
-import org.incept5.authz.core.access.DefaultAccessControlContext
+import jakarta.interceptor.InvocationContext
 import org.incept5.authz.core.annotation.AuthzCheck
 import org.incept5.authz.core.context.AuthzContext
-import jakarta.interceptor.InvocationContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith

@@ -5,7 +5,7 @@
 
 # Incept5 versions
 incept5-correlation = "1.0.20"
-incept5-error = "1.0.22"
+incept5-error = "1.0.24"
 
 # 3pp dependency versions
 hsqldb = "2.7.2"
@@ -19,7 +19,7 @@ slf4j = "2.0.9"
 
 # plugin versions
 jandex = "1.1.0"
-kotlin = "2.1.0"
+kotlin = "2.1.20"
 maven-settings = "0.5"
 dependency-analysis = "1.29.0"
 
