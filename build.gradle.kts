@@ -111,7 +111,7 @@ subprojects {
 
 // Add a task to publish only the modules we want to JitPack
 tasks.register("publishJitPackModules") {
-    dependsOn(":authz-core:publishToMavenLocal", ":error-quarkus:publishToMavenLocal")
+    dependsOn(":authz-core:publishToMavenLocal", ":authz-quarkus:publishToMavenLocal", ":authz-testing:publishToMavenLocal")
 }
 
 // Configure root project publishing for JitPack
