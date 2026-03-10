@@ -14,10 +14,22 @@ private val logger = KotlinLogging.logger {}
  */
 class SimplePermissionService(roles: List<Role>) : PermissionService {
 
-    private val rolePermissionMap: Map<String, List<Permission>> = roles.associateBy(
-        { it.name },
-        { it.permissions.map(Permission::of) }
-    )
+    private val rolePermissionMap: Map<String, List<Permission>> = run {
+        val rolesByName = roles.associateBy { it.name }
+
+        fun resolvePermissions(role: Role, visited: Set<String> = emptySet()): List<Permission> {
+            if (role.name in visited) return emptyList() // cycle guard
+            val own = role.permissions.map(Permission::of)
+            val parent = role.extendsRole?.let { rolesByName[it] }
+            return if (parent != null) {
+                own + resolvePermissions(parent, visited + role.name)
+            } else {
+                own
+            }
+        }
+
+        roles.associate { it.name to resolvePermissions(it) }
+    }
 
     override fun getPermissionsForRole(roleName: String): List<Permission> {
         val result = rolePermissionMap[roleName] ?: emptyList()
