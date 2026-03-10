@@ -95,4 +95,51 @@ class SimplePermissionServiceTest : ShouldSpec({
         val permissions = simplePermissionService.listEntityPermissionsForUser(mockPrincipalContext)
         permissions shouldContainExactly listOf(readPermission)
     }
+
+    should("inherit permissions from extended role") {
+        val inheritRoles = listOf(
+            Role("user", listOf("resource:read")),
+            Role("admin", listOf("resource:create"), extendsRole = "user")
+        )
+        val service = SimplePermissionService(inheritRoles)
+        val permissions = service.getPermissionsForRole("admin")
+        permissions shouldContainExactly listOf(Permission.of("resource:create"), Permission.of("resource:read"))
+    }
+
+    should("handle multi-level inheritance") {
+        val inheritRoles = listOf(
+            Role("user", listOf("resource:read")),
+            Role("admin", listOf("resource:create"), extendsRole = "user"),
+            Role("super_admin", listOf("resource:delete"), extendsRole = "admin")
+        )
+        val service = SimplePermissionService(inheritRoles)
+        val permissions = service.getPermissionsForRole("super_admin")
+        permissions shouldContainExactly listOf(
+            Permission.of("resource:delete"),
+            Permission.of("resource:create"),
+            Permission.of("resource:read")
+        )
+    }
+
+    should("handle circular extendsRole gracefully") {
+        val circularRoles = listOf(
+            Role("role_a", listOf("resource:read"), extendsRole = "role_b"),
+            Role("role_b", listOf("resource:create"), extendsRole = "role_a")
+        )
+        val service = SimplePermissionService(circularRoles)
+        // Should not throw or infinite loop
+        val permissionsA = service.getPermissionsForRole("role_a")
+        val permissionsB = service.getPermissionsForRole("role_b")
+        permissionsA shouldContainExactly listOf(Permission.of("resource:read"), Permission.of("resource:create"))
+        permissionsB shouldContainExactly listOf(Permission.of("resource:create"), Permission.of("resource:read"))
+    }
+
+    should("handle missing parent role") {
+        val rolesWithMissingParent = listOf(
+            Role("admin", listOf("resource:create"), extendsRole = "nonexistent")
+        )
+        val service = SimplePermissionService(rolesWithMissingParent)
+        val permissions = service.getPermissionsForRole("admin")
+        permissions shouldContainExactly listOf(Permission.of("resource:create"))
+    }
 })
