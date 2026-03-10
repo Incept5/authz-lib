@@ -32,7 +32,6 @@ interface AuthzConfig {
 
 interface FilterConfig {
     fun ignorePaths(): List<String>
-    fun lenient(): Optional<Boolean>
 }
 
 interface RoleConfig {

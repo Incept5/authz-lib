@@ -78,7 +78,6 @@ class AuthzConfigTest {
         
         val filter = object : FilterConfig {
             override fun ignorePaths(): List<String> = ignorePaths
-            override fun lenient(): Optional<Boolean> = Optional.empty()
         }
 
         // when/then
