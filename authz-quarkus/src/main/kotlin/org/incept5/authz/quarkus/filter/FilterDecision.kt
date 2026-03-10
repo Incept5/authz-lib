@@ -7,7 +7,8 @@ import jakarta.enterprise.inject.Instance
  */
 class FilterDecision (
     ignoreRegexes: List<String>,
-    providers: Instance<IgnoreAuthzFilterProvider>)  {
+    providers: Instance<IgnoreAuthzFilterProvider>,
+    private val lenient: Boolean = false)  {
 
     private val excludeList = mutableListOf<String>()
 
@@ -20,6 +21,8 @@ class FilterDecision (
     fun shouldIgnore(path: String): Boolean {
         return excludeList.any { matchesPattern(it, path) }
     }
+
+    fun isLenient(): Boolean = lenient
     
     /**
      * Matches a path against a pattern, supporting wildcard (*) characters

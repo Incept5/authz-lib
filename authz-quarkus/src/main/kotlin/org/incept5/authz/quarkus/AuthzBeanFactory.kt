@@ -29,7 +29,7 @@ class AuthzBeanFactory {
         config: AuthzConfig,
         providers: Instance<IgnoreAuthzFilterProvider>
     ): FilterDecision {
-        return FilterDecision(config.filter().ignorePaths(), providers)
+        return FilterDecision(config.filter().ignorePaths(), providers, config.filter().lenient().orElse(false))
     }
 
     @Produces

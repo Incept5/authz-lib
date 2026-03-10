@@ -35,17 +35,27 @@ class AuthzFilter (
 
         val authHeader = requestContext.getHeaderString(AUTHORIZATION)
         if (authHeader == null || !authHeader.startsWith(BEARER_)) {
+            if (filterDecision.isLenient()) {
+                Log.trace { "No bearer token found for ${requestContext.uriInfo.path}, skipping in lenient mode" }
+                return
+            }
             Log.warn("No auth header found or it is not a bearer token")
             requestContext.abortWith(Response.status(Response.Status.UNAUTHORIZED).build())
             return
         }
 
         val authToken = authHeader.replace(BEARER_, "")
-        Log.debug ("Exchanging auth token $authToken for principal context")
-        val principalContext = tokenExchangeService.exchangeToken(authToken)
-        Log.debug ("Adding principal context $principalContext to propagation context")
-        // Assuming you have a way to store the principal context for downstream services
-        // E.g., using a thread-local storage or context propagation mechanism
-        principalService.setPrincipal(principalContext)
+        try {
+            Log.debug { "Exchanging auth token for principal context" }
+            val principalContext = tokenExchangeService.exchangeToken(authToken)
+            Log.debug { "Adding principal context $principalContext to propagation context" }
+            principalService.setPrincipal(principalContext)
+        } catch (e: Exception) {
+            if (filterDecision.isLenient()) {
+                Log.debug { "Token exchange failed for ${requestContext.uriInfo.path}: ${e.message}, skipping in lenient mode" }
+                return
+            }
+            throw e
+        }
     }
 }
