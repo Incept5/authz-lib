@@ -10,7 +10,7 @@ private val logger = KotlinLogging.logger {}
 
 /**
  * Simple implementation of the permission service that takes a list of roles
- * in the constuctor
+ * in the constructor
  */
 class SimplePermissionService(roles: List<Role>) : PermissionService {
 
