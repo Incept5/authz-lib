@@ -129,7 +129,34 @@ jobs:
               fi
             fi
             
-            echo "Both artifacts verified locally"
+            if [ ! -f "$HOME/.m2/repository/com/github/incept5/authz-testing/${VERSION}/authz-testing-${VERSION}.jar" ]; then
+              echo "authz: authz-testing JAR not found locally at expected path"
+              echo "Expected: $HOME/.m2/repository/com/github/incept5/authz-testing/${VERSION}/authz-testing-${VERSION}.jar"
+
+              # Check if the directory exists
+              if [ -d "$HOME/.m2/repository/com/github/incept5/authz-testing" ]; then
+                echo "Available versions for authz-testing:"
+                ls -la "$HOME/.m2/repository/com/github/incept5/authz-testing/"
+              fi
+
+              # Try to find it elsewhere
+              echo "Searching for authz-testing JAR:"
+              find $HOME/.m2/repository -name "authz-testing-*.jar" | sort
+
+              # Try one more publish with explicit version
+              echo "Attempting one more publish with explicit version ${VERSION}"
+              ./gradlew :authz-testing:clean :authz-testing:build :authz-testing:publishToMavenLocal -Pversion=${VERSION} --stacktrace
+
+              # Check again
+              if [ -f "$HOME/.m2/repository/com/github/incept5/authz-testing/${VERSION}/authz-testing-${VERSION}.jar" ]; then
+                echo "Successfully published authz-testing JAR after retry"
+              else
+                echo "Failed to publish authz-testing JAR after retry"
+                exit 1
+              fi
+            fi
+
+            echo "All artifacts verified locally"
             
             # Trigger JitPack build by making a request to the JitPack URL with the version tag
             echo "Triggering JitPack build for version ${VERSION}"
@@ -141,6 +168,7 @@ jobs:
             echo "Modules will be available at:"
             echo "- https://jitpack.io/#incept5/authz-lib/authz-core/${VERSION}"
             echo "- https://jitpack.io/#incept5/authz-lib/authz-quarkus/${VERSION}"
+            echo "- https://jitpack.io/#incept5/authz-lib/authz-testing/${VERSION}"
             
             # Wait for JitPack to process the build
             echo "Waiting for JitPack to process the build..."
@@ -172,9 +200,18 @@ jobs:
               echo "authz-quarkus artifact not found on JitPack. Status code: $QUARKUS_STATUS"
               echo "Check status at: https://jitpack.io/#incept5/authz-lib/${VERSION}"
             fi
-            
+
+            # Verify the build status for authz-testing module
+            TESTING_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://jitpack.io/com/github/incept5/authz-lib/authz-testing/${VERSION}/authz-testing-${VERSION}.jar")
+            if [ "$TESTING_STATUS" -eq 200 ]; then
+              echo "authz-testing artifact successfully published to JitPack!"
+            else
+              echo "authz-testing artifact not found on JitPack. Status code: $TESTING_STATUS"
+              echo "Check status at: https://jitpack.io/#incept5/authz-lib/${VERSION}"
+            fi
+
             # Final verification
-            if [ "$ROOT_STATUS" -eq 200 ] && [ "$CORE_STATUS" -eq 200 ] && [ "$QUARKUS_STATUS" -eq 200 ]; then
+            if [ "$ROOT_STATUS" -eq 200 ] && [ "$CORE_STATUS" -eq 200 ] && [ "$QUARKUS_STATUS" -eq 200 ] && [ "$TESTING_STATUS" -eq 200 ]; then
               echo "All artifacts successfully published to JitPack!"
             else
               echo "WARNING: One or more artifacts may not be available yet on JitPack."
@@ -190,6 +227,7 @@ jobs:
               echo "   dependencies {"
               echo "     implementation 'com.github.incept5.authz-lib:authz-core:${VERSION}'"
               echo "     implementation 'com.github.incept5.authz-lib:authz-quarkus:${VERSION}'"
+              echo "     implementation 'com.github.incept5.authz-lib:authz-testing:${VERSION}'"
               echo "   }"
               echo ""
               echo "3. Or use the root project (includes all modules)"
