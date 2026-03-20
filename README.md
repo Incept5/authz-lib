@@ -174,6 +174,104 @@ Permissions follow the format `<resource>:<operation>`:
     - payees:all    # equivalent to payees:create + payees:read + payees:update + payees:delete
 ```
 
+## How Role Mapping Works
+
+This section explains how services that depend on authz-lib wire up roles, resolve permissions, and enforce access at request time.
+
+### 1. YAML to Role Objects
+
+Services define their roles under `incept5.authz.roles` in `application.yaml`. The authz-quarkus module binds this config automatically via Quarkus `@ConfigMapping`:
+
+```yaml
+incept5:
+  authz:
+    roles:
+      - name: backoffice.admin
+        permissions:
+          - ".*:all"          # wildcard — matches any resource and operation
+      - name: partner.user
+        permissions:
+          - partner:read
+          - webhook:read
+      - name: partner.admin
+        extends-role: partner.user   # inherits all of partner.user's permissions
+        permissions:
+          - partner:update
+          - webhook:create
+      - name: merchant.user
+        permissions:
+          - merchant:read
+      - name: merchant.admin
+        extends-role: merchant.user
+        permissions:
+          - merchant:update
+```
+
+Each entry becomes a `Role` object with a name, a list of permission strings, and an optional `extendsRole` pointer.
+
+### 2. Role Inheritance (`extends-role`)
+
+When a role declares `extends-role`, `SimplePermissionService` resolves permissions recursively at startup:
+
+- `partner.admin` extends `partner.user` → gets `partner:update`, `webhook:create` **plus** `partner:read`, `webhook:read`
+- `merchant.admin` extends `merchant.user` → gets `merchant:update` **plus** `merchant:read`
+
+Multi-level inheritance works too (e.g. `super_admin` → `admin` → `user`). Circular references are guarded against with a visited set.
+
+### 3. Wildcard Permissions
+
+Permissions use regex matching internally. A role with `".*:all"` matches **any** `resource:operation` combination:
+
+```
+Permission.of("merchant:create").matches(Permission.of(".*:all")) → true
+```
+
+This makes `backoffice.admin` a super-admin that passes every permission check.
+
+### 4. Request-Time Flow
+
+```
+JWT Token → AuthzFilter → TokenExchangePlugin → PrincipalContext → @AuthzCheck
+```
+
+1. **AuthzFilter** (a JAX-RS `ContainerRequestFilter` at `AUTHENTICATION` priority) intercepts the request and extracts the Bearer token
+2. **TokenExchangePlugin** validates the token and maps its claims to hierarchical roles. For example, a Supabase-based plugin might map:
+   - `entity_admin` + `entity_type=partner` → `partner.admin`
+   - `entity_user` + `entity_type=merchant` → `merchant.user`
+   - `platform_admin` → `backoffice.admin`
+3. The plugin returns a **PrincipalContext** containing `globalRoles` and `entityRoles` (which include entity IDs)
+4. The principal is stored in the request-scoped `RequestScopePrincipalService` and the JAX-RS `SecurityContext`
+
+### 5. Permission Enforcement
+
+Controllers and services annotate methods with `@AuthzCheck(SomeAccessControl::class)`. Each `AccessControl` implementation calls:
+
+```kotlin
+ctx.authz().ensureOperationAllowedForPrincipal(Permission.of("webhook:read"))
+```
+
+This resolves the principal's roles → collects all permissions (including inherited ones) → regex-matches against the required permission. If no match is found, a `ForbiddenException` (403) is thrown.
+
+### 6. Entity Scoping
+
+Beyond permission checks, the service layer verifies entity ownership. A `partner.admin` for partner A cannot access partner B's data — the `BaseEntityAccessControl` checks that the target entity ID appears in the principal's `entityRoles[].ids`.
+
+### 7. Public Endpoints
+
+Implement `IgnoreAuthzFilterProvider` to whitelist paths that bypass authentication entirely:
+
+```kotlin
+@Singleton
+class MyIgnoreAuthzFilterProvider : IgnoreAuthzFilterProvider {
+    override fun ignoreRegexes(): List<String> = listOf(
+        "/api/v1/public/.*",
+        "/health.*"
+    )
+}
+```
+
+Matching paths skip the `AuthzFilter`, so no token is required.
+
 ## Access Control
 
 ### Simple Entity Permission Check
