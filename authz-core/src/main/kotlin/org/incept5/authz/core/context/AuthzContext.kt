@@ -125,6 +125,14 @@ interface AuthzContext {
      */
     fun ensureRequestedRolesAreAssignable(roleNames: List<String>)
 
+    /**
+     * Check whether the current principal can assign the given role.
+     * Uses the assignable-roles configuration from the role definitions.
+     * @param roleName the role to check
+     * @return true if the principal can assign this role, false otherwise
+     */
+    fun principalCanAssignRole(roleName: String): Boolean
+
     // useful for debugging
     fun listGlobalPermissionsForPrincipal(): List<Permission>
     fun listEntityPermissionsForPrincipal(): List<Permission>

@@ -1,5 +1,6 @@
 package org.incept5.authz.core.service.simple
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -7,8 +8,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.incept5.authz.core.context.PrincipalContext
+import org.incept5.authz.core.exp.ForbiddenException
 import org.incept5.authz.core.model.EntityRole
 import org.incept5.authz.core.model.Permission
+import org.incept5.authz.core.model.Role
 import org.incept5.authz.core.service.PermissionService
 import org.incept5.authz.core.service.PrincipalService
 import org.incept5.authz.core.service.RoleService
@@ -123,17 +126,113 @@ class DelegatingAuthzServiceTest : ShouldSpec({
                 Permission.of("test:read"),
                 Permission.of("test:update")
             )
-            
-            every { 
-                mockPermissionService.listGlobalPermissionsForUser(mockPrincipalContext) 
+
+            every {
+                mockPermissionService.listGlobalPermissionsForUser(mockPrincipalContext)
             } returns permissions
-            
+
             val result = authzService.listGlobalPermissionsForPrincipal()
             result shouldContainExactly permissions
-            
-            verify { 
-                mockPermissionService.listGlobalPermissionsForUser(mockPrincipalContext) 
+
+            verify {
+                mockPermissionService.listGlobalPermissionsForUser(mockPrincipalContext)
             }
+        }
+    }
+
+    context("role assignment with real RoleService") {
+
+        val roles = listOf(
+            Role("backoffice.admin", listOf(".*:all"), null, listOf("partner.admin", "merchant.admin")),
+            Role("partner.admin", listOf("partner:update", "user:create"), "partner.user", listOf("partner.admin", "partner.user", "merchant.admin")),
+            Role("partner.user", listOf("partner:read")),
+            Role("merchant.admin", listOf("merchant:update", "user:create"), "merchant.user", listOf("merchant.admin", "merchant.user")),
+            Role("merchant.user", listOf("merchant:read"))
+        )
+        val roleService = SimpleRoleService(roles)
+        val mockPermissionService = mockk<PermissionService>()
+
+        should("global principal can assign roles based on assignable-roles config") {
+            val principalService = mockk<PrincipalService>()
+            val principal = mockk<PrincipalContext>()
+            every { principal.getGlobalRoles() } returns listOf("backoffice.admin")
+            every { principal.getEntityRoles() } returns emptyList()
+            every { principalService.getPrincipal() } returns principal
+            every { principalService.ensurePrincipal() } returns principal
+
+            val service = DelegatingAuthzService(principalService, roleService, mockPermissionService)
+
+            service.principalCanAssignRole("partner.admin") shouldBe true
+            service.principalCanAssignRole("merchant.admin") shouldBe true
+            service.principalCanAssignRole("backoffice.admin") shouldBe false
+        }
+
+        should("entity-scoped principal uses role names not entity type for assignability") {
+            val principalService = mockk<PrincipalService>()
+            val principal = mockk<PrincipalContext>()
+            every { principal.getGlobalRoles() } returns emptyList()
+            every { principal.getEntityRoles() } returns listOf(
+                EntityRole("partner", listOf("partner.admin"), listOf("partner-123"))
+            )
+            every { principalService.getPrincipal() } returns principal
+            every { principalService.ensurePrincipal() } returns principal
+
+            val service = DelegatingAuthzService(principalService, roleService, mockPermissionService)
+
+            service.principalCanAssignRole("partner.admin") shouldBe true
+            service.principalCanAssignRole("partner.user") shouldBe true
+            service.principalCanAssignRole("merchant.admin") shouldBe true
+            service.principalCanAssignRole("merchant.user") shouldBe false
+            service.principalCanAssignRole("backoffice.admin") shouldBe false
+        }
+
+        should("merchant admin can assign merchant roles only") {
+            val principalService = mockk<PrincipalService>()
+            val principal = mockk<PrincipalContext>()
+            every { principal.getGlobalRoles() } returns emptyList()
+            every { principal.getEntityRoles() } returns listOf(
+                EntityRole("merchant", listOf("merchant.admin"), listOf("merchant-456"))
+            )
+            every { principalService.getPrincipal() } returns principal
+            every { principalService.ensurePrincipal() } returns principal
+
+            val service = DelegatingAuthzService(principalService, roleService, mockPermissionService)
+
+            service.principalCanAssignRole("merchant.admin") shouldBe true
+            service.principalCanAssignRole("merchant.user") shouldBe true
+            service.principalCanAssignRole("partner.admin") shouldBe false
+            service.principalCanAssignRole("partner.user") shouldBe false
+        }
+
+        should("ensureRequestedRolesAreAssignable throws for non-assignable role") {
+            val principalService = mockk<PrincipalService>()
+            val principal = mockk<PrincipalContext>()
+            every { principal.getGlobalRoles() } returns emptyList()
+            every { principal.getEntityRoles() } returns listOf(
+                EntityRole("merchant", listOf("merchant.admin"), listOf("merchant-456"))
+            )
+            every { principalService.getPrincipal() } returns principal
+            every { principalService.ensurePrincipal() } returns principal
+
+            val service = DelegatingAuthzService(principalService, roleService, mockPermissionService)
+
+            shouldThrow<ForbiddenException> {
+                service.ensureRequestedRolesAreAssignable(listOf("partner.admin"))
+            }
+        }
+
+        should("principal with no roles cannot assign any role") {
+            val principalService = mockk<PrincipalService>()
+            val principal = mockk<PrincipalContext>()
+            every { principal.getGlobalRoles() } returns emptyList()
+            every { principal.getEntityRoles() } returns emptyList()
+            every { principalService.getPrincipal() } returns principal
+            every { principalService.ensurePrincipal() } returns principal
+
+            val service = DelegatingAuthzService(principalService, roleService, mockPermissionService)
+
+            service.principalCanAssignRole("partner.admin") shouldBe false
+            service.principalCanAssignRole("merchant.user") shouldBe false
         }
     }
 })

@@ -2,6 +2,7 @@ package org.incept5.authz.core.service.simple
 
 import org.incept5.authz.core.context.AuthzContext
 import org.incept5.authz.core.context.PrincipalContext
+import org.incept5.authz.core.exp.ForbiddenException
 import org.incept5.authz.core.model.Permission
 import org.incept5.authz.core.service.PermissionService
 import org.incept5.authz.core.service.PrincipalService
@@ -63,10 +64,20 @@ class DelegatingAuthzService(
 
     override fun ensureRequestedRolesAreAssignable(roleNames: List<String>) {
         val ctx: PrincipalContext = ensurePrincipal()
-        if (ctx.getEntityRoles().isNotEmpty()) {
-            roleService.ensureRequestedRolesAreAssignable(roleNames, ctx.getEntityRoles().map { it.type })
+        val currentRoles = if (ctx.getEntityRoles().isNotEmpty()) {
+            ctx.getEntityRoles().flatMap { it.roles }
         } else {
-            roleService.ensureRequestedRolesAreAssignable(roleNames, ctx.getGlobalRoles())
+            ctx.getGlobalRoles()
+        }
+        roleService.ensureRequestedRolesAreAssignable(roleNames, currentRoles)
+    }
+
+    override fun principalCanAssignRole(roleName: String): Boolean {
+        return try {
+            ensureRequestedRolesAreAssignable(listOf(roleName))
+            true
+        } catch (e: ForbiddenException) {
+            false
         }
     }
 
