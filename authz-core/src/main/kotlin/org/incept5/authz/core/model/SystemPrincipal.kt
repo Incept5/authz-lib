@@ -27,4 +27,8 @@ object SystemPrincipal : PrincipalContext {
     override fun getEntityRoles(): List<EntityRole> {
         return emptyList()
     }
+
+    override fun getName(): String? {
+        return "SYSTEM PRINCIPAL"
+    }
 }

@@ -18,6 +18,7 @@ class MockTokenExchangeService : TokenExchangePlugin {
 
         if (token == "backoffice-admin-token") {
             return DefaultPrincipalContext(
+                name = "backoffice user",
                 principalId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 globalRoles = listOf("backoffice.admin"),
                 entityRoles = listOf()
@@ -26,6 +27,7 @@ class MockTokenExchangeService : TokenExchangePlugin {
 
         if (token == "no-roles-token") {
             return DefaultPrincipalContext(
+                name = "not roles user",
                 principalId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
                 globalRoles = emptyList(),
                 entityRoles = emptyList()
@@ -34,6 +36,7 @@ class MockTokenExchangeService : TokenExchangePlugin {
 
         if (token == "org-user-token") {
             return DefaultPrincipalContext(
+                name = "org user",
                 principalId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
                 globalRoles = emptyList(),
                 entityRoles = listOf(

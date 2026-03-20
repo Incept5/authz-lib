@@ -9,7 +9,9 @@ import jakarta.ws.rs.Priorities
 import jakarta.ws.rs.container.ContainerRequestContext
 import jakarta.ws.rs.container.ContainerRequestFilter
 import jakarta.ws.rs.core.Response
+import jakarta.ws.rs.core.SecurityContext
 import jakarta.ws.rs.ext.Provider
+import java.security.Principal
 
 private const val AUTHORIZATION = "Authorization"
 private const val BEARER_ = "Bearer "
@@ -44,8 +46,15 @@ class AuthzFilter (
         Log.debug ("Exchanging auth token $authToken for principal context")
         val principalContext = tokenExchangeService.exchangeToken(authToken)
         Log.debug ("Adding principal context $principalContext to propagation context")
-        // Assuming you have a way to store the principal context for downstream services
-        // E.g., using a thread-local storage or context propagation mechanism
         principalService.setPrincipal(principalContext)
+
+        // Make the principal available via the standard JAX-RS SecurityContext
+        val existingSecurityContext = requestContext.securityContext
+        requestContext.securityContext = object : SecurityContext {
+            override fun getUserPrincipal(): Principal = principalContext
+            override fun isUserInRole(role: String): Boolean = principalContext.getGlobalRoles().contains(role)
+            override fun isSecure(): Boolean = existingSecurityContext.isSecure
+            override fun getAuthenticationScheme(): String = "Bearer"
+        }
     }
 }

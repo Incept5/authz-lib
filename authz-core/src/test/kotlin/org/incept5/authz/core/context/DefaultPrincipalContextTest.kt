@@ -18,27 +18,27 @@ class DefaultPrincipalContextTest : ShouldSpec({
         )
         
         should("return correct principal ID") {
-            val context = DefaultPrincipalContext(principalId, globalRoles, entityRoles)
+            val context = DefaultPrincipalContext("principal name", principalId, globalRoles, entityRoles)
             context.getPrincipalId() shouldBe principalId
         }
         
         should("return correct global roles") {
-            val context = DefaultPrincipalContext(principalId, globalRoles, entityRoles)
+            val context = DefaultPrincipalContext("principal name", principalId, globalRoles, entityRoles)
             context.getGlobalRoles() shouldContainExactly globalRoles
         }
         
         should("return correct entity roles") {
-            val context = DefaultPrincipalContext(principalId, globalRoles, entityRoles)
+            val context = DefaultPrincipalContext("principal name", principalId, globalRoles, entityRoles)
             context.getEntityRoles() shouldContainExactly entityRoles
         }
         
         should("handle empty entity roles") {
-            val context = DefaultPrincipalContext(principalId, globalRoles)
+            val context = DefaultPrincipalContext("principal name", principalId, globalRoles)
             context.getEntityRoles().shouldBeEmpty()
         }
         
         should("handle empty global roles") {
-            val context = DefaultPrincipalContext(principalId, emptyList(), entityRoles)
+            val context = DefaultPrincipalContext("principal name", principalId, emptyList(), entityRoles)
             context.getGlobalRoles().shouldBeEmpty()
         }
     }

@@ -31,6 +31,7 @@ class RequestScopePrincipalServiceTest {
         // given
         val principalId = UUID.randomUUID()
         val principal = DefaultPrincipalContext(
+            name = "foo user",
             principalId = principalId,
             globalRoles = listOf("admin"),
             entityRoles = emptyList()
@@ -50,11 +51,13 @@ class RequestScopePrincipalServiceTest {
     fun `should override principal when set multiple times`() {
         // given
         val principal1 = DefaultPrincipalContext(
+            name ="foo user",
             principalId = UUID.randomUUID(),
             globalRoles = listOf("admin"),
             entityRoles = emptyList()
         )
         val principal2 = DefaultPrincipalContext(
+            name = "foo2 user",
             principalId = UUID.randomUUID(),
             globalRoles = listOf("user"),
             entityRoles = emptyList()

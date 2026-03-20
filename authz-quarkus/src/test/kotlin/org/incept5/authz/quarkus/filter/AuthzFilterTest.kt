@@ -5,6 +5,7 @@ import org.incept5.authz.core.service.TokenExchangeService
 import org.incept5.authz.quarkus.RequestScopePrincipalService
 import jakarta.ws.rs.container.ContainerRequestContext
 import jakarta.ws.rs.core.Response
+import jakarta.ws.rs.core.SecurityContext
 import jakarta.ws.rs.core.UriInfo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -96,22 +97,36 @@ class AuthzFilterTest {
         val path = "/api/users"
         val token = "valid-token"
         val principalContext = DefaultPrincipalContext(
+            name = "foo user",
             principalId = UUID.randomUUID(),
             globalRoles = listOf("user"),
             entityRoles = emptyList()
         )
-        
+        val existingSecurityContext = mock(SecurityContext::class.java)
+        `when`(existingSecurityContext.isSecure).thenReturn(true)
+
         `when`(uriInfo.path).thenReturn(path)
         `when`(filterDecision.shouldIgnore(path)).thenReturn(false)
         `when`(requestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+        `when`(requestContext.securityContext).thenReturn(existingSecurityContext)
         `when`(tokenExchangeService.exchangeToken(token)).thenReturn(principalContext)
-        
+
         // when
         authzFilter.filter(requestContext)
-        
+
         // then
         verify(tokenExchangeService).exchangeToken(token)
         verify(principalService).setPrincipal(principalContext)
         verify(requestContext, never()).abortWith(any())
+
+        // verify SecurityContext was set with the principal
+        val securityContextCaptor = ArgumentCaptor.forClass(SecurityContext::class.java)
+        verify(requestContext).securityContext = securityContextCaptor.capture()
+        val newSecurityContext = securityContextCaptor.value
+        assertEquals(principalContext, newSecurityContext.userPrincipal)
+        assertEquals(true, newSecurityContext.isUserInRole("user"))
+        assertEquals(false, newSecurityContext.isUserInRole("admin"))
+        assertEquals(true, newSecurityContext.isSecure)
+        assertEquals("Bearer", newSecurityContext.authenticationScheme)
     }
 }
