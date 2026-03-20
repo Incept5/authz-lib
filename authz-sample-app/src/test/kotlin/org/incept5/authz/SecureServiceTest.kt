@@ -73,5 +73,27 @@ class SecureServiceTest {
             .statusCode(401)
     }
 
+    @Test
+    fun `should return principal info from SecurityContext`() {
+        val response = RestAssured.given()
+            .`when`()
+            .header("Authorization", "Bearer backoffice-admin-token")
+            .get("/example/me")
 
+        response.then()
+            .statusCode(200)
+            .body("name", CoreMatchers.equalTo("backoffice user"))
+            .body("globalRoles[0]", CoreMatchers.equalTo("backoffice.admin"))
+            .body("isAdmin", CoreMatchers.equalTo(true))
+    }
+
+    @Test
+    fun `should return 401 for me endpoint without token`() {
+        val response = RestAssured.given()
+            .`when`()
+            .get("/example/me")
+
+        response.then()
+            .statusCode(401)
+    }
 }
