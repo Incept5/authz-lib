@@ -272,9 +272,55 @@ class MyIgnoreAuthzFilterProvider : IgnoreAuthzFilterProvider {
 
 Matching paths skip the `AuthzFilter`, so no token is required.
 
-## Access Control
+## Protecting Endpoints
 
-### Simple Entity Permission Check
+Access control starts at the controller level and works in layers:
+
+1. **`@Authorized`** on the class — enables the authz interceptor for all methods
+2. **`@AuthzCheck`** on each method — binds a specific `AccessControl` class that enforces permissions
+
+### Step 1: Annotate the Controller
+
+```kotlin
+@Path("/api/v1/users")
+@Authorized
+class UserController {
+
+    @Inject
+    lateinit var userService: UserService
+
+    @GET
+    @Path("/{userId}")
+    @AuthzCheck(ReadUserAccessControl::class)
+    fun getUser(@PathParam("userId") userId: UUID): UserResponse {
+        return userService.getUser(userId)
+    }
+
+    @POST
+    @AuthzCheck(CreateUserAccessControl::class)
+    fun createUser(request: CreateUserRequest): UserResponse {
+        return userService.createUser(request)
+    }
+}
+```
+
+Both `@Authorized` (class-level) and `@AuthzCheck` (method-level) are required. Without `@Authorized`, the interceptor is not activated and `@AuthzCheck` has no effect.
+
+### Step 2: Write an AccessControl Class
+
+The `AccessControl` interface provides `before` and `after` hooks around the annotated method. Use `ctx.authz()` to access the `AuthzContext` helper methods.
+
+**Key principles:**
+
+- **Backoffice users** (global permissions) typically have full access — check with `principalHasGlobalPermission()`
+- **Entity users** (partners, merchants) are restricted to their domain — match entity IDs from the path or result against the principal's entity IDs
+- If the entity ID is **in the path** (e.g. `/partner/{partnerId}`), validate in `before()` using `extractEntityId`
+- If the entity ID is **only in the result** (e.g. reading a user whose entity isn't in the URL), validate in `after()`
+- If the entity ID is **not directly available**, inject a repository to look it up (e.g. find a transaction by ID, then check its partnerId/merchantId)
+
+### Simple Case: Entity ID in the Path
+
+When the entity ID is available from the method arguments (e.g. a path parameter or request body), use `BaseEntityAccessControl`:
 
 ```kotlin
 class CreateUserAccessControl : BaseEntityAccessControl(
@@ -284,26 +330,124 @@ class CreateUserAccessControl : BaseEntityAccessControl(
 )
 ```
 
-### Custom Access Control with Before/After Hooks
+This handles both backoffice (global permission → allow) and entity-scoped checks in a single line.
 
-For complex scenarios, implement the `AccessControl` interface as a managed bean:
+### Full Example: Entity ID Only in the Result
+
+When the entity ID is not in the request path, enforce scoping in the `after()` hook by inspecting the result:
 
 ```kotlin
-@ApplicationScoped
-class ComplexAccessControl : AccessControl<MyResponseType> {
-    @Inject
-    lateinit var someService: SomeService
+class ReadUserAccessControl : AccessControl<Any?> {
+
+    private val permission = Permission.of("user:read")
 
     override fun before(ctx: DefaultAccessControlContext) {
-        // Pre-execution checks
+        // Ensure the principal has the permission at all (global or entity-level)
+        ctx.authz().ensureOperationAllowedForPrincipal(permission)
     }
 
-    override fun after(result: MyResponseType, ctx: DefaultAccessControlContext): MyResponseType {
-        // Filter or modify the result based on permissions
-        return result
+    override fun after(result: Any?, ctx: DefaultAccessControlContext): Any? {
+        if (result !is UserResponse) return result
+
+        val targetEntityId = result.entityId ?: return result
+
+        // Backoffice users have global permission — allow access to any user
+        if (ctx.authz().principalHasGlobalPermission(permission)) {
+            return result
+        }
+
+        // Partner-scoped: target user's entityId must be in the principal's allowed partner IDs
+        if (ctx.authz().principalHasEntityRole("partner")) {
+            val allowedIds = ctx.authz().specificEntityIds(permission, "partner")
+            if (targetEntityId !in allowedIds) {
+                throw AuthzException(
+                    AuthzErrorCodes.PERMISSION_DENIED,
+                    "User access denied: principal does not have access to user in entity $targetEntityId"
+                )
+            }
+            return result
+        }
+
+        // Merchant-scoped: target user's entityId must be in the principal's allowed merchant IDs
+        if (ctx.authz().principalHasEntityRole("merchant")) {
+            val allowedIds = ctx.authz().specificEntityIds(permission, "merchant")
+            if (targetEntityId !in allowedIds) {
+                throw AuthzException(
+                    AuthzErrorCodes.PERMISSION_DENIED,
+                    "User access denied: principal does not have access to user in entity $targetEntityId"
+                )
+            }
+            return result
+        }
+
+        // No matching entity role and no global permission — deny
+        throw AuthzException(
+            AuthzErrorCodes.PERMISSION_DENIED,
+            "User access denied: principal has no entity scope for user in entity $targetEntityId"
+        )
     }
 }
 ```
+
+### Repository Lookup: Entity ID Not in Path or Result
+
+When you need to resolve the entity from another source (e.g. a transaction ID in the path), make the `AccessControl` class a CDI bean and inject a repository:
+
+```kotlin
+@ApplicationScoped
+class ReadTransactionAccessControl : AccessControl<Any?> {
+
+    @Inject
+    lateinit var transactionRepository: TransactionRepository
+
+    private val permission = Permission.of("transaction:read")
+
+    override fun before(ctx: DefaultAccessControlContext) {
+        ctx.authz().ensureOperationAllowedForPrincipal(permission)
+
+        // Backoffice can access anything
+        if (ctx.authz().principalHasGlobalPermission(permission)) return
+
+        // Look up the transaction to find which entity it belongs to
+        val transactionId = ctx.firstArg<String>()
+        val transaction = transactionRepository.findById(transactionId)
+            ?: throw AuthzException(AuthzErrorCodes.PERMISSION_DENIED, "Transaction not found")
+
+        // Check partner access
+        if (ctx.authz().principalHasEntityRole("partner")) {
+            val allowedIds = ctx.authz().specificEntityIds(permission, "partner")
+            if (transaction.partnerId !in allowedIds) {
+                throw AuthzException(AuthzErrorCodes.PERMISSION_DENIED, "Access denied to transaction")
+            }
+            return
+        }
+
+        // Check merchant access
+        if (ctx.authz().principalHasEntityRole("merchant")) {
+            val allowedIds = ctx.authz().specificEntityIds(permission, "merchant")
+            if (transaction.merchantId !in allowedIds) {
+                throw AuthzException(AuthzErrorCodes.PERMISSION_DENIED, "Access denied to transaction")
+            }
+            return
+        }
+
+        throw AuthzException(AuthzErrorCodes.PERMISSION_DENIED, "No entity scope for transaction")
+    }
+}
+```
+
+### AuthzContext Helper Methods
+
+The `ctx.authz()` object provides the following methods for access control logic:
+
+| Method | Use |
+|--------|-----|
+| `ensureOperationAllowedForPrincipal(perm)` | Pre-check: principal has the permission globally or for any entity |
+| `principalHasGlobalPermission(perm)` | Check if backoffice-level (global) access — if true, skip entity checks |
+| `principalHasEntityRole(type)` | Check if the principal has any role for an entity type (e.g. "partner") |
+| `specificEntityIds(perm, type)` | Get the list of entity IDs the principal can access for a permission + type |
+| `ensurePrincipalHasPermission(perm, type, entityId)` | All-in-one: checks global OR entity-scoped access for a specific entity ID |
+| `principalHasPermission(perm, type, entityId)` | Boolean version of the above |
 
 ## Testing
 
