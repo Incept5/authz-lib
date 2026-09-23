@@ -57,16 +57,19 @@ interface MfaConfig {
 
     /**
      * Role names whose principals must hold a multi-factor session. Empty/absent disables
-     * enforcement. Compared against the principal's global and entity roles. Provider-agnostic —
+     * enforcement. Compared against the principal's global and entity roles after expanding
+     * `extends-role` inheritance, so a role that extends a required role is governed too.
+     * Provider-agnostic —
      * the consuming application supplies its own privileged roles (FanFair defaults this to
      * `backoffice.admin`, story AC2); authz-lib hardcodes no role name.
      */
     fun requiredRoles(): Optional<List<String>>
 
     /**
-     * Path patterns (same `*` / `{segment}` wildcards as the ignore list) that a single-factor
-     * holder of a required role may still reach — the endpoints needed to enrol a second factor.
-     * Distinct from the ignore list: these still authenticate, they only skip the MFA gate.
+     * Path patterns (same `*` / `{segment}` wildcards as the ignore list; every other character is
+     * literal) that a single-factor holder of a required role may still reach — the endpoints
+     * needed to enrol a second factor. Distinct from the ignore list: these still authenticate,
+     * they only skip the MFA gate.
      */
     fun skipPaths(): Optional<List<String>>
 }

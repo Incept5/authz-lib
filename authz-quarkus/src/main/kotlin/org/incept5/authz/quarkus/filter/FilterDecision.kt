@@ -5,21 +5,17 @@ import jakarta.enterprise.inject.Instance
 /**
  * Decide if the request should be filtered or not
  */
-class FilterDecision (
-    ignoreRegexes: List<String>,
-    providers: Instance<IgnoreAuthzFilterProvider>)  {
+class FilterDecision(
+    ignorePatterns: List<String>,
+    providers: Instance<IgnoreAuthzFilterProvider>,
+) {
 
-    private val excludeList = mutableListOf<String>()
+    // Compiled once at construction. Pattern semantics (`*` and `{segment}`) live in the shared
+    // [PathPatternMatcher], reused by the MFA-skip list so the two path lists cannot drift apart.
+    private val excludeList: List<Regex> =
+        PathPatternMatcher.compileAll(ignorePatterns + providers.flatMap { it.ignoreRegexes() })
 
-    // build the list of regexes to ignore once at the beginning
-    init {
-        excludeList.addAll(ignoreRegexes)
-        providers.forEach { excludeList.addAll(it.ignoreRegexes()) }
-    }
-
-    // Pattern semantics (`*` and `{segment}`) live in the shared [PathPatternMatcher], reused by the
-    // MFA-skip list so the two path lists cannot drift apart.
     fun shouldIgnore(path: String): Boolean {
-        return excludeList.any { PathPatternMatcher.matches(it, path) }
+        return excludeList.any { it.matches(path) }
     }
 }

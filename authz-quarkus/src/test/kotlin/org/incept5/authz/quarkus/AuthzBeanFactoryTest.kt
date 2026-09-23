@@ -9,6 +9,7 @@ import org.incept5.authz.core.service.simple.SimplePermissionService
 import org.incept5.authz.core.service.simple.SimpleRoleService
 import org.incept5.authz.quarkus.config.AuthzConfig
 import org.incept5.authz.quarkus.config.FilterConfig
+import org.incept5.authz.quarkus.config.MfaConfig
 import org.incept5.authz.quarkus.config.RoleConfig
 import org.incept5.authz.quarkus.filter.IgnoreAuthzFilterProvider
 import org.junit.jupiter.api.Assertions.*
@@ -56,6 +57,23 @@ class AuthzBeanFactoryTest {
         assertTrue(filterDecision.shouldIgnore("/metrics"))
     }
     
+    @Test
+    fun `should expose the nested mfa config as its own bean`() {
+        // given
+        val mfaConfig = mock(MfaConfig::class.java)
+        `when`(mfaConfig.requiredRoles()).thenReturn(Optional.of(listOf("backoffice.admin")))
+        `when`(mfaConfig.skipPaths()).thenReturn(Optional.empty())
+        `when`(authzConfig.mfa()).thenReturn(mfaConfig)
+
+        // when
+        val produced = authzBeanFactory.mfaConfig(authzConfig)
+
+        // then
+        assertSame(mfaConfig, produced)
+        assertEquals(listOf("backoffice.admin"), produced.requiredRoles().get())
+        assertTrue(produced.skipPaths().isEmpty)
+    }
+
     @Test
     fun `should create combined role list from config and providers`() {
         // given

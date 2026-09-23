@@ -13,13 +13,27 @@ incept5:
   authz:
 
     filter:
+      # Not regexes: `*` matches any run of characters, `{segment}` exactly one path segment.
       ignore-paths:
-        - /public/.*
+        - /public/*
+
+    # Holders of backoffice.admin (or any role that extends it) need a multi-factor session,
+    # except on the paths listed under skip-paths (the second-factor enrolment surface).
+    mfa:
+      required-roles:
+        - backoffice.admin
+      skip-paths:
+        - /example/me
 
     roles:
       - name: backoffice.admin
         permissions:
           - example:read
+
+      - name: backoffice.owner
+        extends-role: backoffice.admin
+        permissions:
+          - example:create
 
       - name: org.user
         permissions:

@@ -1,7 +1,7 @@
 package org.incept5.authz.quarkus
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import jakarta.enterprise.context.RequestScoped
+import jakarta.enterprise.context.ApplicationScoped
 import jakarta.enterprise.inject.Instance
 import jakarta.enterprise.inject.Produces
 import jakarta.inject.Singleton
@@ -24,8 +24,14 @@ private val logger = KotlinLogging.logger {}
  */
 class AuthzBeanFactory {
 
+    /**
+     * `@ApplicationScoped` (a normal scope, so injection points receive a client proxy): the eager
+     * `@Provider` filters are instantiated at static-init, before the `AuthzConfig` mapping is
+     * registered, so the underlying config must be resolved lazily on the first request rather than
+     * at bean construction. Ignore paths and providers are static, so one instance serves all requests.
+     */
     @Produces
-    @RequestScoped
+    @ApplicationScoped
     fun filterDecision(
         config: AuthzConfig,
         providers: Instance<IgnoreAuthzFilterProvider>
@@ -38,12 +44,11 @@ class AuthzBeanFactory {
      * injects a plain [MfaConfig] (mirroring how the filter chain injects [FilterDecision]), rather
      * than a standalone `@ConfigMapping` — which Quarkus does not auto-register from a library jar.
      *
-     * `@RequestScoped`, exactly like [filterDecision]: the eager `@Provider` filter injects a client
-     * proxy, so the underlying `AuthzConfig` mapping is resolved on the first request rather than at
-     * static-init, when the mapping is not yet registered.
+     * `@ApplicationScoped` for the same reason as [filterDecision]: the client proxy defers resolving
+     * the `AuthzConfig` mapping until the first request, after static-init.
      */
     @Produces
-    @RequestScoped
+    @ApplicationScoped
     fun mfaConfig(config: AuthzConfig): MfaConfig = config.mfa()
 
     @Produces

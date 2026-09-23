@@ -1,38 +1,41 @@
 package org.incept5.authz.quarkus.filter
 
 /**
- * Shared path-pattern matcher used by both the authz ignore list ([FilterDecision]) and the
- * MFA-skip list ([AssuranceLevelFilter]). These are NOT full regexes — two wildcards only:
+ * Shared path-pattern compiler used by both the authz ignore list ([FilterDecision]) and the
+ * MFA-skip list ([AssuranceLevelFilter]). Patterns are NOT regexes — every character is literal
+ * except two wildcards:
  *
- *  - `*` matches any run of characters, including `/` (mapped to `.*`).
- *  - `{segment}` matches exactly one non-empty path segment (mapped to `[^/]+`), so
+ *  - `*` matches any run of characters, including `/`.
+ *  - `{segment}` matches exactly one non-empty path segment, so
  *    `/api/v1/users/{segment}` matches `/api/v1/users/u_1` but not `/api/v1/users/u_1/totp`.
  *
- * A pattern with neither wildcard matches only its exact literal path.
+ * A pattern with neither wildcard matches only its exact literal path. Every other character —
+ * including regex metacharacters such as `.`, `+`, `?`, `(`, `[` and JAX-RS-style `{id}`
+ * placeholders — is matched literally, so a configured pattern can never fail to compile at
+ * request time. Callers compile once (at construction) and keep the [Regex]; matching is then a
+ * single anchored match per request.
  */
-object PathPatternMatcher {
+internal object PathPatternMatcher {
 
-    private const val SEGMENT = "{segment}"
+    private const val STAR = "*"
 
-    // A sentinel that cannot appear in a URL path, so the dot-escaping pass leaves it untouched.
-    private const val SEGMENT_PLACEHOLDER = " SEG "
+    /** The two wildcard tokens; every run of characters between them is escaped verbatim. */
+    private val WILDCARD = Regex("""\*|\{segment}""")
 
-    fun matches(pattern: String, path: String): Boolean {
-        // Direct match.
-        if (pattern == path) return true
-
-        // Wildcard patterns.
-        if (pattern.contains("*") || pattern.contains(SEGMENT)) {
-            val regex = pattern
-                .replace(SEGMENT, SEGMENT_PLACEHOLDER)  // shield {segment} from dot-escaping
-                .replace(".", "\\.")                    // escape dots
-                .replace("*", ".*")                     // convert * to .*
-                .replace(SEGMENT_PLACEHOLDER, "[^/]+")   // one non-empty segment
-                .let { "^$it$" }                        // anchor
-                .toRegex()
-            return regex.matches(path)
+    fun compile(pattern: String): Regex {
+        val regex = StringBuilder("^")
+        var literalStart = 0
+        for (wildcard in WILDCARD.findAll(pattern)) {
+            regex.append(literal(pattern.substring(literalStart, wildcard.range.first)))
+            regex.append(if (wildcard.value == STAR) ".*" else "[^/]+")
+            literalStart = wildcard.range.last + 1
         }
-
-        return false
+        regex.append(literal(pattern.substring(literalStart)))
+        regex.append("$")
+        return Regex(regex.toString())
     }
+
+    fun compileAll(patterns: Iterable<String>): List<Regex> = patterns.map(::compile)
+
+    private fun literal(chunk: String): String = if (chunk.isEmpty()) "" else Regex.escape(chunk)
 }

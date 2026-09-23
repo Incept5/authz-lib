@@ -138,10 +138,14 @@ interface PrincipalContext : Principal {
     fun getPrincipalId(): UUID
     fun getGlobalRoles(): List<String>
     fun getEntityRoles(): List<EntityRole>
+
+    // Defaulted — see "Multi-Factor Enforcement" below.
+    fun getAssuranceLevel(): AssuranceLevel = AssuranceLevel.SINGLE_FACTOR
+    fun isMachinePrincipal(): Boolean = false
 }
 ```
 
-The default implementation is `DefaultPrincipalContext`. Libraries like `platform-core-lib` can extend this with richer types (e.g. `ApiPrincipal`) that carry additional token metadata while remaining compatible with the authz framework.
+The default implementation is `DefaultPrincipalContext`, which takes `assuranceLevel` and `machinePrincipal` as optional constructor parameters. Libraries like `platform-core-lib` can extend this with richer types (e.g. `ApiPrincipal`) that carry additional token metadata while remaining compatible with the authz framework. A token exchange plugin that supports MFA enforcement **must** override the two defaulted methods: map the provider's assurance claim to `getAssuranceLevel()` and return `true` from `isMachinePrincipal()` for API-key and service-to-service tokens.
 
 ### Roles
 
@@ -258,19 +262,58 @@ Beyond permission checks, the service layer verifies entity ownership. A `partne
 
 ### 7. Public Endpoints
 
-Implement `IgnoreAuthzFilterProvider` to whitelist paths that bypass authentication entirely:
+Implement `IgnoreAuthzFilterProvider` (or set `incept5.authz.filter.ignore-paths`) to whitelist paths that bypass authentication entirely:
 
 ```kotlin
 @Singleton
 class MyIgnoreAuthzFilterProvider : IgnoreAuthzFilterProvider {
     override fun ignoreRegexes(): List<String> = listOf(
-        "/api/v1/public/.*",
-        "/health.*"
+        "/api/v1/public/*",
+        "/health*"
     )
 }
 ```
 
 Matching paths skip the `AuthzFilter`, so no token is required.
+
+Despite the method name, the entries are **not regexes**. Every character is literal except two wildcards:
+
+| Wildcard    | Matches                                            | Example                                                              |
+|-------------|----------------------------------------------------|----------------------------------------------------------------------|
+| `*`         | any run of characters, including `/`               | `/api/v1/public/*` matches `/api/v1/public/a/b`                      |
+| `{segment}` | exactly one non-empty path segment                 | `/api/v1/sessions/{segment}` matches `/api/v1/sessions/s1` but not `/api/v1/sessions/s1/x` |
+
+A pattern with no wildcard matches only that exact path. A regex-style `/public/.*` therefore matches `/public/.hidden` but **not** `/public/foo`. The same syntax is used by `incept5.authz.mfa.skip-paths`.
+
+## Multi-Factor Enforcement
+
+Optionally require a multi-factor session for privileged roles. Nothing is enforced until `incept5.authz.mfa.required-roles` is set:
+
+```yaml
+incept5:
+  authz:
+    mfa:
+      required-roles:
+        - backoffice.admin
+      skip-paths:                    # single-factor holders may still reach these
+        - /api/v1/users/profile      # (the second-factor enrolment surface)
+        - /api/v1/users/{segment}/totp/*
+```
+
+`AssuranceLevelFilter` (a `ContainerRequestFilter` at `AUTHENTICATION + 1`) runs after `AuthzFilter` has exchanged the token and reads only the resulting `PrincipalContext`; it never inspects the token or a provider claim. A request is refused with **HTTP 403** and error code `MFA_REQUIRED` when all of the following hold:
+
+1. The principal holds a required role — directly, or through a role that `extends-role` a required role (inheritance is resolved via `RoleService.expandRoles`).
+2. `principal.getAssuranceLevel()` is below `MULTI_FACTOR`.
+3. `principal.isMachinePrincipal()` is `false` (API keys and service tokens are never gated).
+4. The request path does not match a `skip-paths` pattern.
+
+The error code is the bare string `MFA_REQUIRED` (not `authz.`-prefixed) so that clients can branch on it, and it is a 403 rather than a 401 so that a portal can route the user to a second-factor challenge instead of signing them out:
+
+```json
+{ "errors": [ { "code": "MFA_REQUIRED", "message": "A multi-factor authenticated session is required for this role" } ] }
+```
+
+Plugin obligations: the `TokenExchangePlugin` must populate `getAssuranceLevel()` from the provider's assurance claim (e.g. Supabase `aal2` → `MULTI_FACTOR`) and mark machine-issued tokens via `isMachinePrincipal()`; both default to the single-factor human case, so a plugin that ignores them will see every admin refused once `required-roles` is set.
 
 ## Protecting Endpoints
 
@@ -453,10 +496,13 @@ The `ctx.authz()` object provides the following methods for access control logic
 
 The `authz-testing` module provides `MockTokenExchangeService`, a `TokenExchangePlugin` that maps fixed token strings to principals:
 
-| Token                    | Principal                                        |
-|--------------------------|--------------------------------------------------|
-| `backoffice-admin-token` | Global role `backoffice.admin`                   |
-| `no-roles-token`         | No roles                                         |
-| `org-user-token`         | Entity role `org.user` for entity `org-1`        |
+| Token                         | Principal                                                          |
+|-------------------------------|--------------------------------------------------------------------|
+| `backoffice-admin-token`      | Global role `backoffice.admin`, multi-factor session               |
+| `backoffice-admin-1fa-token`  | Global role `backoffice.admin`, single-factor session              |
+| `backoffice-owner-1fa-token`  | Global role `backoffice.owner`, single-factor session              |
+| `service-account-token`       | Global role `backoffice.admin`, machine principal (never MFA-gated) |
+| `no-roles-token`              | No roles                                                           |
+| `org-user-token`              | Entity role `org.user` for entity `org-1`                          |
 
 Use it in integration tests by passing these tokens as Bearer tokens in the `Authorization` header.

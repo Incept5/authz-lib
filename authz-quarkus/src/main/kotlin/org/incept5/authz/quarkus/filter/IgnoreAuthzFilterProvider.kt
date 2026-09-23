@@ -2,8 +2,8 @@ package org.incept5.authz.quarkus.filter
 
 // Contribute to the set of path patterns that should be ignored by the authz filter.
 //
-// These are NOT full regexes — FilterDecision escapes literal dots and understands two
-// wildcards only:
+// These are NOT full regexes — PathPatternMatcher (shared with the MFA skip list) matches every
+// character literally and understands two wildcards only:
 //   - a star matches any run of characters, including "/". e.g. "/auth/" followed by a star
 //     ignores every sub-path of /auth/.
 //   - "{segment}" matches exactly one non-empty path segment. e.g.

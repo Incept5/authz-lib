@@ -81,6 +81,7 @@ When a role declares `extends-role`, `SimplePermissionService` resolves permissi
 - `partner.admin` gets its own permissions (`partner:update`, `webhook:create`) **plus** all of `partner.user`'s (`partner:read`, `webhook:read`)
 - Multi-level inheritance works (e.g. `super_admin` -> `admin` -> `user`)
 - Circular references are guarded with a visited set
+- `RoleService.expandRoles(names)` returns a set of role names plus every ancestor, so features that reason about *roles* rather than permissions (e.g. `incept5.authz.mfa.required-roles`) see a sub-role as also holding each role it extends
 
 ### Two Flavours of Roles
 
@@ -109,10 +110,14 @@ interface PrincipalContext : Principal {
     fun getPrincipalId(): UUID
     fun getGlobalRoles(): List<String>
     fun getEntityRoles(): List<EntityRole>
+
+    // Defaulted; read by the optional MFA gate (see README "Multi-Factor Enforcement").
+    fun getAssuranceLevel(): AssuranceLevel = AssuranceLevel.SINGLE_FACTOR
+    fun isMachinePrincipal(): Boolean = false
 }
 ```
 
-The `platform-core-lib` extends this with `ApiPrincipal`, which carries additional JWT metadata (subject, scopes, client ID, entity type).
+The `platform-core-lib` extends this with `ApiPrincipal`, which carries additional JWT metadata (subject, scopes, client ID, entity type). A plugin that supports MFA enforcement must override the two defaulted methods.
 
 ---
 
