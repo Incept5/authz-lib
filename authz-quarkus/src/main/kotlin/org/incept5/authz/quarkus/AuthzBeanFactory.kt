@@ -12,6 +12,7 @@ import org.incept5.authz.core.service.simple.DelegatingAuthzService
 import org.incept5.authz.core.service.simple.SimplePermissionService
 import org.incept5.authz.core.service.simple.SimpleRoleService
 import org.incept5.authz.quarkus.config.AuthzConfig
+import org.incept5.authz.quarkus.config.MfaConfig
 import org.incept5.authz.quarkus.filter.FilterDecision
 import org.incept5.authz.quarkus.filter.IgnoreAuthzFilterProvider
 
@@ -31,6 +32,19 @@ class AuthzBeanFactory {
     ): FilterDecision {
         return FilterDecision(config.filter().ignorePaths(), providers)
     }
+
+    /**
+     * Expose the nested MFA config as its own bean so [org.incept5.authz.quarkus.filter.AssuranceLevelFilter]
+     * injects a plain [MfaConfig] (mirroring how the filter chain injects [FilterDecision]), rather
+     * than a standalone `@ConfigMapping` — which Quarkus does not auto-register from a library jar.
+     *
+     * `@RequestScoped`, exactly like [filterDecision]: the eager `@Provider` filter injects a client
+     * proxy, so the underlying `AuthzConfig` mapping is resolved on the first request rather than at
+     * static-init, when the mapping is not yet registered.
+     */
+    @Produces
+    @RequestScoped
+    fun mfaConfig(config: AuthzConfig): MfaConfig = config.mfa()
 
     @Produces
     @Singleton
