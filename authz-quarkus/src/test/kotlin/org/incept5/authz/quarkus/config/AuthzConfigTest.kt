@@ -16,6 +16,7 @@ class AuthzConfigTest {
         val config = object : AuthzConfig {
             override fun filter(): FilterConfig = filterConfig
             override fun roles(): List<RoleConfig> = emptyList()
+            override fun mfa(): MfaConfig = emptyMfa()
             override fun users(): List<UserConfig> = emptyList()
         }
 
@@ -36,6 +37,7 @@ class AuthzConfigTest {
         val config = object : AuthzConfig {
             override fun filter(): FilterConfig = mock(FilterConfig::class.java)
             override fun roles(): List<RoleConfig> = roles
+            override fun mfa(): MfaConfig = emptyMfa()
             override fun users(): List<UserConfig> = emptyList()
         }
 
@@ -82,5 +84,10 @@ class AuthzConfigTest {
 
         // when/then
         assertEquals(ignorePaths, filter.ignorePaths())
+    }
+
+    private fun emptyMfa(): MfaConfig = object : MfaConfig {
+        override fun requiredRoles(): Optional<List<String>> = Optional.empty()
+        override fun skipPaths(): Optional<List<String>> = Optional.empty()
     }
 }

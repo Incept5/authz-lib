@@ -25,4 +25,23 @@ interface RoleService {
             }
         }
     }
+
+    /**
+     * The given role names plus every role they inherit from through [Role.extendsRole],
+     * transitively. Names with no known [Role] are kept as-is (they simply have no ancestors), and
+     * inheritance cycles are tolerated. This is the role-level counterpart of the permission
+     * resolution done by `SimplePermissionService`: a principal holding a sub-role is treated as
+     * also holding each role it extends.
+     */
+    fun expandRoles(roleNames: Collection<String>): Set<String> {
+        val expanded = LinkedHashSet<String>()
+        val pending = ArrayDeque(roleNames)
+        while (pending.isNotEmpty()) {
+            val name = pending.removeFirst()
+            if (expanded.add(name)) {
+                getRole(name)?.extendsRole?.let { pending.addLast(it) }
+            }
+        }
+        return expanded
+    }
 }

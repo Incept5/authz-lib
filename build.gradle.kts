@@ -47,6 +47,11 @@ kotlin {
 
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        // Emit JVM default methods for Kotlin interface defaults so that adding a defaulted
+        // method to a published interface (e.g. PrincipalContext) stays binary-compatible with
+        // implementers compiled against an older release. "all-compatibility" also keeps the
+        // legacy DefaultImpls classes that existing consumer jars may still reference.
+        freeCompilerArgs.add("-Xjvm-default=all-compatibility")
     }
 }
 
@@ -72,6 +77,8 @@ subprojects {
         jvmToolchain(21)
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+            // See the root compilerOptions block: keep interface defaults binary-compatible.
+            freeCompilerArgs.add("-Xjvm-default=all-compatibility")
         }
     }
 
